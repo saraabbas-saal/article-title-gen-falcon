@@ -2,15 +2,16 @@ from flask import Flask, request, jsonify
 from pymongo import MongoClient
 from transformers import AutoTokenizer,AutoModelForSeq2SeqLM
 import os
-import pprint
+import requests
 import json
-from bson import ObjectId
-
+# from bson import ObjectId
+from ai71 import AI71 
 import nltk
 nltk.download('punkt')
 
 db_user= os.environ.get("DB_USER")
 db_pass= os.environ.get("DB_PASS")
+api_key= os.environ.get("AI71_API_KEY")
 
 app= Flask("wiki_app")
 
@@ -57,7 +58,8 @@ model_dir = "checkpoint-400"
 model = load_model(model_dir)
 tokenizer= load_tokenizer(model_dir)
     
-    
+
+        
 @app.route("/topic/generate",methods=['POST'])
 def generate_topic():
     
@@ -65,14 +67,60 @@ def generate_topic():
     text= request.json['text']
     
     inputs = ["Generate a short title: " + text]
-
-    inputs = tokenizer(inputs, max_length=max_input_length, truncation=True, return_tensors="pt")
-    output = model.generate(**inputs, num_beams=8, do_sample=True, min_length=10, max_length=20)
-    decoded_output = tokenizer.batch_decode(output, skip_special_tokens=True)[0]
-    predicted_title = nltk.sent_tokenize(decoded_output.strip())[0]
     
-    response= {"title": predicted_title}
-    return response
+client = AI71(api_key)
+messages = [{"role": "system", "content": "You work at wikipedia. Generate a title for the article provided by the user input."}]
+
+class AI71:
+        def __init__(self, api_key):
+            self.api_key = api_key
+            
+        def chat_completions(self, model, messages, temperature=0.7):
+            headers = {
+                'Content-Type': 'application/json',
+                'Authorization': f'Bearer {self.api_key}',
+            }
+            json_data = {
+                'model': model, #'tiiuae/falcon-180B-chat',
+                'messages': messages,
+                'temperature':temperature
+            }
+            response = requests.post('https://api.ai71.ai/v1/chat/completions', headers=headers, json=json_data)
+            return response.json()
+
+
+content = input(f"User:")
+messages.append({"role": "user", "content": content})
+print(f"Falcon:", sep="", end="", flush=True)
+content = ""
+
+# for chunk in client.chat.completions.create(
+#     messages=messages,
+#     model="tiiuae/falcon-180B-chat",
+#     stream=True,
+# ):
+#     delta_content = chunk.choices[0].delta.content
+#     if delta_content:
+#         print(delta_content, sep="", end="", flush=True)
+#         content += delta_content
+
+# messages.append({"role": "title generator", "content": content})
+# print("\n")
+
+
+client = AI71("apikey")
+message = [{"role": "system", "content": "You work at wikipedia. Generate a title for the article provided by the user input."},{"role": "user", "content": "Hello!"}]
+chunk = client.chat_completions('tiiuae/falcon-180B-chat', message)
+print(chunk)
+output = chunk["choices"][0]["message"]["content"]
+
+    # inputs = tokenizer(inputs, max_length=max_input_length, truncation=True, return_tensors="pt")
+    # output = model.generate(**inputs, num_beams=8, do_sample=True, min_length=10, max_length=20)
+    # decoded_output = tokenizer.batch_decode(output, skip_special_tokens=True)[0]
+    # predicted_title = nltk.sent_tokenize(decoded_output.strip())[0]
+    
+    # response= {"title": predicted_title}
+    # return response
      
 @app.route("/references",methods=['GET'])
 def fetch_ref():
@@ -97,12 +145,7 @@ def fetch_ref():
 
     # print(document)
     # return jsonify(reference= document )
-
-    
-    
-    
-    
-    
+  
     
 if __name__ == "__main__":
     client= MongoClient(
