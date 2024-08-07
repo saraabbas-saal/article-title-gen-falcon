@@ -1,0 +1,1 @@
+This repositry is the full project of work-experience-june2024
